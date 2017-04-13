@@ -6,6 +6,7 @@ import {
   Database,
   Query,
   QueryToken,
+  QueryBuffer,
   SchemaDef,
   Clause,
   ExecutorResult
@@ -52,20 +53,29 @@ export type CUDApiResult<T> = CApiResult<T> | UDResult<T>
 export const schemas: { schema: SchemaDef<any>, name: string }[] = []
 
 export class SDK {
+  queryBuffer = new QueryBuffer
   fetch = new SDKFetch
   socketClient: SocketClient
   public fields = new Map<string, string[]>()
   private requestMap = new Map<string, boolean>()
 
+  public database: Database
   constructor(
-    public database: Database
   ) {
     forEach(schemas, d => {
-      database.defineSchema(d.name, d.schema)
       this.fields.set(d.name, Object.keys(d.schema).filter(k => !d.schema[k].virtual))
     })
-    database.connect()
-    this.socketClient = new SocketClient(database, this.fetch)
+    this.socketClient = new SocketClient(this.fetch)
+  }
+
+  initReactiveDB = (db: Database): void => {
+    this.database = db
+    forEach(schemas, d => {
+      this.database.defineSchema(d.name, d.schema)
+    })
+    this.database.connect()
+
+    this.queryBuffer.persist(this.database, this.requestMap)
   }
 
   lift<T>(result: ApiResult<T, CacheStrategy.Cache>): QueryToken<T>
@@ -113,6 +123,12 @@ export class SDK {
     switch (cacheValidate) {
       case CacheStrategy.Request:
         if (!requestCache) {
+
+          if (!this.database) {
+            console.info('no rdb')
+            return this.queryBuffer.add(request, q, tableName, 'request')
+          }
+          console.info('rdb ok')
           const selectMeta$ = request
             .concatMap<T | T[], T>(v => this.database.upsert(tableName, v))
             .do(() => this.requestMap.set(sq, true))
@@ -122,6 +138,9 @@ export class SDK {
           return this.database.get<T>(tableName, q)
         }
       case CacheStrategy.Cache:
+        if (!this.database) {
+          return this.queryBuffer.add(request, q, tableName, 'cache')
+        }
         const selectMeta$ = this.database
           .get<T>(tableName, q)
           .values()
@@ -147,7 +166,14 @@ export class SDK {
   handleCUDAResult<T>(result: CUDApiResult<T>) {
     const { request, method, tableName } = result as CUDApiResult<T>
     let destination: Observable<ExecutorResult> | Observable<T | T[]>
-
+    if (!this.database) {
+      return this.queryBuffer.addCUD(
+        request,
+        method,
+        tableName,
+        method === 'delete' ? (result as UDResult<T>).clause : undefined
+      )
+    }
     return request
       .concatMap(v => {
         switch (method) {

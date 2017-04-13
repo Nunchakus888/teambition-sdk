@@ -7,7 +7,7 @@ import 'rxjs/add/operator/toPromise'
 import 'rxjs/add/operator/concatMap'
 import 'rxjs/add/operator/take'
 import { ReplaySubject } from 'rxjs/ReplaySubject'
-import { Database } from 'reactivedb'
+// import { Database } from 'reactivedb'
 import { SDKFetch } from '../SDKFetch'
 import { socketHandler } from './EventMaps'
 import * as Consumer from 'snapper-consumer'
@@ -32,8 +32,9 @@ export class SocketClient {
   private _leavedRoom = new Set<string>()
 
   constructor(
-    private database: Database,
-    private fetch: SDKFetch
+    // private database: Database,
+    private fetch: SDKFetch,
+    private queryBuffer
   ) { }
 
   destroy() {
@@ -139,7 +140,7 @@ export class SocketClient {
       // 避免被插件清除掉
       ctx['console']['log'](JSON.stringify(event, null, 2))
     }
-    return socketHandler(this.database, event)
+    return socketHandler(this.queryBuffer, event)
       .toPromise()
       .then(null, (err: any) => ctx['console']['error'](err))
   }
@@ -169,7 +170,7 @@ export function leaveRoom (
   room: string,
   consumerId: string
 ) {
-  return (<any>this.delete)(`/${room}/subscribe`, {
+  return (<any>this.delete)(`${room}/subscribe`, {
     consumerId
   })
     .toPromise()
@@ -180,7 +181,7 @@ export function joinRoom (
   room: string,
   consumerId: string
 ) {
-  return this.post<void>(`/${room}/subscribe`, {
+  return this.post<void>(`${room}/subscribe`, {
     consumerId: consumerId
   })
     .toPromise()

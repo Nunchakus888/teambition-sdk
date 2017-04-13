@@ -32,3 +32,11 @@ import './Tasklist'
 export * from './Tasklist'
 import './UserMe'
 export * from './UserMe'
+// export { proxySchema as default } from 'reactivedb/proxy'
+
+// require.ensure(['reactivedb', 'sdk/schemas'], () => {
+//   const { Database } = require('reactivedb')
+//   const ProxySchema = require('sdk/schemas')
+//   const database = new Database
+//   sdk.initRdb(database, ProxySchema)
+// })

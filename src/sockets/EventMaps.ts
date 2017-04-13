@@ -8,6 +8,7 @@ import { forEach, capitalizeFirstLetter } from '../utils/index'
 import { Logger, Level } from 'reactivedb'
 import Dirty from '../utils/Dirty'
 
+
 const methodMap: any = {
   'change': 'upsert',
   'new': 'upsert',
@@ -37,7 +38,7 @@ SDKLogger.setLevel(envify())
  * refresh 事件需要逐个单独处理
  * destroy 事件没有 data
  */
-const handler = (db: Database, socketMessage: MessageResult) => {
+const handler = (queryBuffer, socketMessage: MessageResult, db?: Database) => {
   const method = socketMessage.method
   let type = socketMessage.type
   if (type.charAt(type.length - 1) === 's' &&
@@ -54,6 +55,17 @@ const handler = (db: Database, socketMessage: MessageResult) => {
   } catch (err) {
     SDKLogger.warn(`Not existTable: ${arg1}`)
     return Observable.of(null)
+  }
+
+  if (!db) {
+    const mapedMethod = methodMap[method]
+    if (mapedMethod === 'upsert') {
+      queryBuffer.addSocketCUD(mapedMethod, arg1, socketMessage.data)
+    } else {
+      queryBuffer.addSocketCUD(mapedMethod, arg1, {
+        where: { _id: socketMessage.id || socketMessage.data }
+      })
+    }
   }
 
   switch (socketMessage.method) {
@@ -75,11 +87,11 @@ const handler = (db: Database, socketMessage: MessageResult) => {
   }
 }
 
-export function socketHandler (db: Database, event: RequestEvent): Observable<any> {
+export function socketHandler (queryBuffer, event: RequestEvent, db?: Database): Observable<any> {
   const signals: Observable<any>[] = []
   const socketMessages = eventParser(event)
   forEach(socketMessages, socketMessage => {
-    signals.push(handler(db, socketMessage))
+    signals.push(handler(queryBuffer, socketMessage, db))
   })
   return Observable.from(signals)
     .mergeAll()
